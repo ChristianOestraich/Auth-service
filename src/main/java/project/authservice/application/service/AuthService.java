@@ -2,11 +2,12 @@ package project.authservice.application.service;
 
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.crypto.bcrypt.BCrypt;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import project.authservice.application.dto.TokenResponse;
@@ -18,85 +19,93 @@ import project.authservice.infrastructure.exception.AuthException;
 import project.authservice.infrastructure.exception.TokenRefreshException;
 
 @Service
-public class AuthService
-{
+public class AuthService {
     private final AuthenticationManager authenticationManager;
     private final JwtTokenUtil jwtTokenUtil;
     private final UserDetailsService userDetailsService;
     private final UserRepository userRepository;
     private final RefreshTokenService refreshTokenService;
+    private final PasswordEncoder passwordEncoder;
 
-    public AuthService( AuthenticationManager authenticationManager,
-                        JwtTokenUtil jwtTokenUtil,
-                        UserDetailsService userDetailsService,
-                        UserRepository userRepository,
-                        RefreshTokenService refreshTokenService )
-    {
+    public AuthService(AuthenticationManager authenticationManager,
+                       JwtTokenUtil jwtTokenUtil,
+                       UserDetailsService userDetailsService,
+                       UserRepository userRepository,
+                       RefreshTokenService refreshTokenService, PasswordEncoder passwordEncoder) {
         this.authenticationManager = authenticationManager;
         this.jwtTokenUtil = jwtTokenUtil;
         this.userDetailsService = userDetailsService;
         this.userRepository = userRepository;
         this.refreshTokenService = refreshTokenService;
+        this.passwordEncoder = passwordEncoder;
     }
 
     @Transactional
-    public TokenResponse authenticate( String email, String password )
-    {
-        try
-        {
-            Authentication authentication = authenticationManager.authenticate(
-                    new UsernamePasswordAuthenticationToken( email, password ) );
+    public TokenResponse authenticate(String email, String password) {
+        try {
+            User user = userRepository.findByEmail(email)
+                    .orElseThrow(() -> new AuthException("Usuário não encontrado"));
 
-            SecurityContextHolder.getContext().setAuthentication( authentication );
+            if (!user.isEnabled()) {
+                throw new AuthException("Conta desativada");
+            }
 
-            UserDetails userDetails = userDetailsService.loadUserByUsername( email );
+            System.out.println("Senha digitada: " + password);
+            System.out.println("Senha armazenada (hash): " + user.getPassword());
 
-            String token = jwtTokenUtil.generateToken( userDetails );
+            // Usando o método de verificação de senha
+            if (verifyPassword(password, user.getPassword())) {
+                throw new AuthException("Credenciais inválidas");
+            }
 
-            RefreshToken refreshToken = refreshTokenService.createRefreshToken( email );
+            // Carrega os detalhes do usuário
+            UserDetails userDetails = userDetailsService.loadUserByUsername(email);
+            String token = jwtTokenUtil.generateToken(userDetails);
 
-            return new TokenResponse( token, refreshToken.getToken() );
+            return new TokenResponse(token);
 
-        }
-        catch ( BadCredentialsException e )
-        {
-            throw new AuthException( "Credenciais inválidas" );
+        } catch (BadCredentialsException e) {
+            throw new AuthException("Credenciais inválidas");
+        } catch (Exception e) {
+            throw new AuthException("Erro durante a autenticação: " + e.getMessage());
         }
     }
 
-    @Transactional
-    public TokenResponse refreshToken( String refreshTokenRequest )
-    {
-        RefreshToken refreshToken = refreshTokenService.findByToken( refreshTokenRequest )
-                .orElseThrow(() -> new TokenRefreshException( "Refresh token não encontrado" ) );
+    public boolean verifyPassword(String rawPassword, String hashedPassword) {
+        // Comparar a senha digitada com o hash armazenado
+        return BCrypt.checkpw(rawPassword, hashedPassword);
+    }
 
-        refreshToken = refreshTokenService.verifyExpiration( refreshToken );
+    @Transactional
+    public TokenResponse refreshToken(String refreshTokenRequest) {
+        RefreshToken refreshToken = refreshTokenService.findByToken(refreshTokenRequest)
+                .orElseThrow(() -> new TokenRefreshException("Refresh token não encontrado"));
+
+        refreshToken = refreshTokenService.verifyExpiration(refreshToken);
 
         User user = refreshToken.getUser();
 
-        String newToken = jwtTokenUtil.generateToken( user );
+        String newToken = jwtTokenUtil.generateToken(user);
 
-        return new TokenResponse( newToken, refreshTokenRequest );
+        return new TokenResponse(newToken, refreshTokenRequest);
     }
 
     @Transactional
-    public void logout( String authHeader )
-    {
-        String token = authHeader.substring( 7 );
+    public void logout(String authHeader) {
+        String token = authHeader.substring(7);
 
-        String email = jwtTokenUtil.getUsernameFromToken( token );
+        String email = jwtTokenUtil.getUsernameFromToken(token);
 
-        User user = userRepository.findByEmail( email )
-                .orElseThrow( () -> new AuthException( "Usuário não encontrado" ) );
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new AuthException("Usuário não encontrado"));
 
-        refreshTokenService.deleteByUserId( user.getId() );
+        refreshTokenService.deleteByUserId(user.getId());
     }
 
-    public User getCurrentUser()
-    {
+    public User getCurrentUser() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         String email = authentication.getName();
-        return userRepository.findByEmail( email )
-                .orElseThrow( () -> new AuthException( "Usuário não encontrado" ) );
+        return userRepository.findByEmail(email)
+                .orElseThrow(() -> new AuthException("Usuário não encontrado"));
     }
 }

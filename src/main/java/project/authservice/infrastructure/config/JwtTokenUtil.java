@@ -1,10 +1,14 @@
 package project.authservice.infrastructure.config;
 
 import io.jsonwebtoken.*;
+import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
 
+import javax.crypto.SecretKey;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -52,14 +56,14 @@ public class JwtTokenUtil
         return doGenerateToken( claims, userDetails.getUsername() );
     }
 
-    private String doGenerateToken( Map<String, Object> claims, String subject )
-    {
+    private String doGenerateToken(Map<String, Object> claims, String subject) {
+        SecretKey secretKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8)); // Use a chave segura
         return Jwts.builder()
-                .setClaims( claims )
-                .setSubject( subject )
-                .setIssuedAt( new Date( System.currentTimeMillis() ) )
-                .setExpiration( new Date( System.currentTimeMillis() + expiration ) )
-                .signWith( SignatureAlgorithm.HS512, secret )
+                .setClaims(claims)
+                .setSubject(subject)
+                .setIssuedAt(new Date(System.currentTimeMillis()))
+                .setExpiration(new Date(System.currentTimeMillis() + expiration))
+                .signWith(secretKey) // Use a chave segura
                 .compact();
     }
 

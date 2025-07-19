@@ -24,12 +24,13 @@ public class AuthController
         this.registrationService = registrationService;
     }
 
-    @PostMapping( "/login" )
-    public ResponseEntity<TokenResponse> login( @Valid @RequestBody LoginRequest loginRequest )
-    {
-        TokenResponse tokenResponse = authService.authenticate( loginRequest.getEmail(),
-                                                                loginRequest.getPassword() );
-        return ResponseEntity.ok( tokenResponse );
+    @PostMapping("/login")
+    public ResponseEntity<TokenResponse> login(@Valid @RequestBody LoginRequest loginRequest) {
+        TokenResponse tokenResponse = authService.authenticate(
+                loginRequest.getEmail(),
+                loginRequest.getPassword()
+        );
+        return ResponseEntity.ok(tokenResponse);
     }
 
     @PostMapping( "/register" )

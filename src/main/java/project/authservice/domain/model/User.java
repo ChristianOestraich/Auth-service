@@ -5,11 +5,14 @@ import lombok.Data;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.HashSet;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Data
 @Entity
@@ -39,9 +42,9 @@ public class User implements UserDetails
 
     @ManyToMany( fetch = FetchType.EAGER )
     @JoinTable( name = "user_roles",
-                joinColumns = @JoinColumn( name = "user_id" ),
-                inverseJoinColumns = @JoinColumn( name = "role_id" ) )
-    private Collection<Role> roles = new HashSet<>();
+            joinColumns = @JoinColumn( name = "user_id" ),
+            inverseJoinColumns = @JoinColumn( name = "role_id" ) )
+    private Set<Role> roles = new HashSet<>();
 
     @CreationTimestamp
     private LocalDateTime createdAt;
@@ -57,7 +60,10 @@ public class User implements UserDetails
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities()
     {
-        return this.roles;
+        // Corrigido: converte cada role em SimpleGrantedAuthority
+        return this.roles.stream()
+                .map(role -> new SimpleGrantedAuthority(role.getName()))
+                .collect(Collectors.toSet());
     }
 
     @Override
